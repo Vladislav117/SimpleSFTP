@@ -3,170 +3,96 @@ package ru.vladislav117.simplesftp;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
-import com.jcraft.jsch.SftpException;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.util.function.Consumer;
 
 /**
- * Простой объект управления SFTP.
+ * Объект связи с севером по SFTP.
  */
 public class SimpleSFTP {
-    /**
-     * Статус выполнения операции.
-     */
-    public enum Status {
-        /**
-         * Статус успеха проведения операции.
-         */
-        SUCCESS,
-        /**
-         * Ошибка чтения порта. Обычно такое происходит, если введённая строка порта не является числом.
-         */
-        PORT_ERROR,
-        /**
-         * Ошибка подключения. Причины могут быть разными: нет подключения к интернету, неверный адрес сервера и т.п.
-         */
-        CONNECTION_ERROR,
-        /**
-         * Отсутствие локального файла.
-         */
-        LOCAL_FILE_NOT_FOUND,
-        /**
-         * Ошибка загрузки файла на сервер.
-         */
-        UPLOAD_ERROR
-    }
-
-    protected String address;
-    protected String port;
-    protected String user;
-    protected String password;
-    protected boolean connected = false;
-    protected boolean displayExceptions = false;
-
-    protected @Nullable JSch jsch = null;
-    protected @Nullable Session session = null;
-    protected @Nullable ChannelSftp channel = null;
+    static boolean displayExceptions = true;
+    static Consumer<Exception> exceptionDisplay = Throwable::printStackTrace;
 
     /**
-     * Создание объекта управления SFTP.
-     *
-     * @param address  Адрес сервера
-     * @param port     Порт сервера
-     * @param user     Пользователь
-     * @param password Пароль
-     */
-    public SimpleSFTP(String address, String port, String user, String password) {
-        this.address = address;
-        this.port = port;
-        this.user = user;
-        this.password = password;
-    }
-
-    /**
-     * Получение адреса сервера.
-     *
-     * @return Адрес сервера.
-     */
-    public String getAddress() {
-        return address;
-    }
-
-    /**
-     * Получение порта сервера.
-     *
-     * @return Порт сервера.
-     */
-    public String getPort() {
-        return port;
-    }
-
-    /**
-     * Получение пользователя.
-     *
-     * @return Пользователь.
-     */
-    public String getUser() {
-        return user;
-    }
-
-    /**
-     * Получение статуса соединения.
-     *
-     * @return Статус соединения.
-     */
-    public boolean isConnected() {
-        return connected;
-    }
-
-    /**
-     * Получение статуса отображения исключений.
+     * Получение статуса отображения исключений. По умолчанию отображение включено.
      *
      * @return Статус отображения исключений.
      */
-    public boolean isDisplayExceptions() {
+    public static boolean isDisplayExceptions() {
         return displayExceptions;
     }
 
     /**
-     * Установка статуса отображения исключений.
+     * Установка статуса отображения исключений. По умолчанию отображение включено.
      *
-     * @param displayExceptions Статус отображения
-     * @return Этот же объект управления SFTP.
+     * @param displayExceptions Статус отображения исключений.
      */
-    public SimpleSFTP setDisplayExceptions(boolean displayExceptions) {
-        this.displayExceptions = displayExceptions;
-        return this;
+    public static void setDisplayExceptions(boolean displayExceptions) {
+        SimpleSFTP.displayExceptions = displayExceptions;
     }
 
     /**
-     * Получение JSch.
+     * Установка метода отображения исключений. По умолчанию это printStackTrace().
      *
-     * @return JSch или null, если подключения не было произведено.
+     * @param exceptionDisplay Метод отображения исключений.
      */
-    public @Nullable JSch getJsch() {
-        return jsch;
+    public static void setExceptionDisplay(Consumer<Exception> exceptionDisplay) {
+        SimpleSFTP.exceptionDisplay = exceptionDisplay;
     }
 
     /**
-     * Получение сессии.
+     * Отображение исключения. Если отображение отключено, то ничего не произойдёт.
      *
-     * @return Сессия или null, если подключения не было произведено.
+     * @param exception Исключение.
      */
-    public @Nullable Session getSession() {
-        return session;
+    static void displayException(Exception exception) {
+        if (displayExceptions) exceptionDisplay.accept(exception);
+    }
+
+    protected JSch jsch;
+    protected Session session;
+    protected ChannelSftp channel;
+
+    /**
+     * Создание объекта связи по SFTP.
+     *
+     * @param jsch    JSch-объект
+     * @param session Сессия
+     * @param channel Канал
+     */
+    protected SimpleSFTP(JSch jsch, Session session, ChannelSftp channel) {
+        this.jsch = jsch;
+        this.session = session;
+        this.channel = channel;
     }
 
     /**
-     * Получение канала.
+     * Создание связи с сервером.
      *
-     * @return Канал или null, если подключения не было произведено.
+     * @param address  Адрес сервера
+     * @param port     SFTP-порт
+     * @param user     Пользователь
+     * @param password Пароль
+     * @return Созданный объект связи с сервером или null, если произошла какая-либо ошибка.
      */
-    public @Nullable ChannelSftp getChannel() {
-        return channel;
-    }
-
-    /**
-     * Подключение к серверу.
-     *
-     * @return Статус подключения.
-     */
-    public Status connect() {
-        if (connected) return Status.SUCCESS;
-        int port = 0;
+    public static @Nullable SimpleSFTP connect(String address, String port, String user, String password) {
+        int portNumber;
         try {
-            port = Integer.parseInt(this.port);
+            portNumber = Integer.parseInt(port);
         } catch (NumberFormatException exception) {
             displayException(exception);
-            return Status.PORT_ERROR;
+            return null;
         }
+
+        JSch jsch;
+        Session session;
+        ChannelSftp channel;
         try {
             jsch = new JSch();
-            session = jsch.getSession(user, address, port);
+            session = jsch.getSession(user, address, portNumber);
             session.setPassword(password);
             session.setConfig("StrictHostKeyChecking", "no");
             session.connect();
@@ -174,67 +100,46 @@ public class SimpleSFTP {
             channel.connect();
         } catch (Exception exception) {
             displayException(exception);
-            return Status.CONNECTION_ERROR;
+            return null;
         }
-        connected = true;
-        return Status.SUCCESS;
+
+        return new SimpleSFTP(jsch, session, channel);
     }
 
     /**
-     * Передача файла.
+     * Передача файла на сервер.
      *
      * @param localFile       Локальный файл
      * @param remoteDirectory Директория на сервере
-     * @return Статус передачи файла.
+     * @return Статус передачи файла: true - если файл был передан, false - если произошла ошибка.
      */
-    public Status transferFile(File localFile, String remoteDirectory) {
-        if (!connected) {
-            Status status = connect();
-            if (status != Status.SUCCESS) return status;
-        }
-        if (channel == null) return Status.CONNECTION_ERROR;
+    public boolean transferFile(File localFile, String remoteDirectory) {
         try (FileInputStream fileInputStream = new FileInputStream(localFile)) {
             channel.cd(remoteDirectory);
             channel.put(fileInputStream, localFile.getName());
-            System.out.println("File uploaded successfully - " + localFile);
-        } catch (FileNotFoundException exception) {
+        } catch (Exception exception) {
             displayException(exception);
-            return Status.LOCAL_FILE_NOT_FOUND;
-        } catch (SftpException exception) {
-            displayException(exception);
-            return Status.UPLOAD_ERROR;
-        } catch (IOException exception) {
-            throw new RuntimeException(exception);
+            return false;
         }
-        return Status.SUCCESS;
+        return true;
     }
 
     /**
-     * Передача файла.
+     * Передача файла на сервер.
      *
      * @param localFilePath   Путь к локальному файлу
      * @param remoteDirectory Директория на сервере
-     * @return Статус передачи файла.
+     * @return Статус передачи файла: true - если файл был передан, false - если произошла ошибка.
      */
-    public Status transferFile(String localFilePath, String remoteDirectory) {
+    public boolean transferFile(String localFilePath, String remoteDirectory) {
         return transferFile(new File(localFilePath), remoteDirectory);
     }
 
     /**
-     * Отключение.
+     * Отключение соединения с сервером.
      */
     public void disconnect() {
-        if (!connected) return;
-        if (channel != null) channel.disconnect();
-        if (session != null) session.disconnect();
-    }
-
-    /**
-     * Отображение исключения. Если отображение отключено, ничего не произойдёт.
-     *
-     * @param exception Исключение
-     */
-    protected void displayException(Exception exception) {
-        if (displayExceptions) System.out.println(exception.toString());
+        channel.disconnect();
+        session.disconnect();
     }
 }

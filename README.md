@@ -7,22 +7,9 @@ SimpleSFTP - максимально упрощённая java-библиотек
 ### Gradle
 
 ```groovy
-repositories {
-    mavenCentral()
-    maven { url 'https://jitpack.io' }
-}
-
 dependencies {
-    implementation 'com.github.Vladislav117:SimpleSFTP:1.0'
-}
-```
-
-**Если при использовании у вас возникает ошибка, то попробуйте поменять зависимости на следующее:**
-
-```groovy
-dependencies {
-    classpath 'com.github.mwiede:jsch:0.2.19'
-    classpath('com.github.Vladislav117:SimpleSFTP:1.0') {
+    implementation 'com.github.mwiede:jsch:0.2.19'
+    implementation ('com.github.Vladislav117:SimpleSFTP:1.1') {
         exclude group: "com.github.mwiede", module: "jsch"
     }
 }
@@ -41,7 +28,13 @@ dependencies {
 <dependency>
     <groupId>com.github.Vladislav117</groupId>
     <artifactId>SimpleSFTP</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
+    <exclusions>
+        <exclusion>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+        </exclusion>
+    </exclusions>
 </dependency>
 ```
 
@@ -49,30 +42,34 @@ dependencies {
 
 Пример загрузки файла на сервер:
 ```java
-// Создание объекта для подключения
-SimpleSFTP sftp = new SimpleSFTP("your-sftp-server.com", "7777", "user", "password");
+// Подключение к серверу.
+SimpleSFTP sftp = SimpleSFTP.connect("127.0.0.1", "7777", "user", "password");
 
-// Если будет вызвано исключение - оно будет выведено в консоль
-sftp.setDisplayExceptions(true);
+// Если не удалось подключиться, метод connect вернёт null.
+if (sftp == null) return;
 
-// Подключение. Полученный статус покажет, что пошло не так
-SimpleSFTP.Status status = sftp.connect();
+// Передача файла "image1.png" в директорию сервера "/images".
+boolean status1 = sftp.transferFile(new File("image1.png"), "/images");
 
-// Если статус неуспешный, прерываем выполнение
-if (status != SimpleSFTP.Status.SUCCESS) return;
-
-// Передача файла "image.png" в директорию сервера "/images".
-status = sftp.transferFile(new File("image.png"), "/images")
-
-// Если статус неуспешный, прерываем выполнение
-if (status != SimpleSFTP.Status.SUCCESS) return;
+// Если не удалось отправить файл, то статус будет равен false.
+if (!status1) return;
 
 // Передача файла "image2.png" в директорию сервера "/images".
-status = sftp.transferFile("image2.png", "/images")
+boolean status2 = sftp.transferFile("image2.png", "/images");
 
-// Если статус неуспешный, прерываем выполнение
-if (status != SimpleSFTP.Status.SUCCESS) return;
+// Если не удалось отправить файл, то статус будет равен false.
+if (!status2) return;
 
-// Отключаем соединение
+// Отключение от сервера.
 sftp.disconnect();
+```
+
+Если вы хотите отключить вывод исключений или изменить метод вывода, воспользуйтесь этим:
+
+```java
+// Отключение вывода исключений.
+SimpleSFTP.setDisplayExceptions(false);
+
+// Изменение метода вывода исключений.
+SimpleSFTP.setExceptionDisplay(exception -> exception.printStackTrace());
 ```
