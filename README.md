@@ -17,6 +17,17 @@ dependencies {
 }
 ```
 
+**Если при использовании у вас возникает ошибка, то попробуйте поменять зависимости на следующее:**
+
+```groovy
+dependencies {
+    classpath 'com.github.mwiede:jsch:0.2.19'
+    classpath('com.github.Vladislav117:SimpleSFTP:1.0') {
+        exclude group: "com.github.mwiede", module: "jsch"
+    }
+}
+```
+
 ### Maven
 
 ```xml
